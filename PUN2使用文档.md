@@ -2,7 +2,16 @@
 
 
 
+## UnityDemo的网盘连接
+
+链接：https://pan.baidu.com/s/1IZliy4ccXwuifLXyLWx4Ag?pwd=w9zs 
+提取码：w9zs 
+
+
+
 ## 1 PUN2快速入门配置
+
+
 
 ### 1.1 客户端A连接到PUN2服务器
 
@@ -59,7 +68,7 @@
 
 
 
-### 1.2 对应客户端的人物生成和控制
+### 1.2 对应客户端的人物生成和第三视角控制
 
 1. 房间创建+NickName，更新Launcher.cs
 
@@ -229,14 +238,13 @@
      >
      > 可以把Rigidbody的Component下的Constraints的FreezeRotation全部勾选
 
-### 1.3 第一人称
 
-> - 摄像机第一人称的挂载
-> - 鼠标控制方向键盘控制移动
 
-需要丢弃PlayerControl.cs
+### 1.3 第一人称控制
 
-在Player下挂载FirstPersonMovement.cs
+需要**丢弃PlayerControl.cs**
+
+在Player下挂载**FirstPersonMovement.cs**（WASD的移动是根据面朝方向而不是绝对方向）
 
 ```cs
 using System.Collections.Generic;
@@ -304,7 +312,7 @@ public class FirstPersonMovement : MonoBehaviourPun
 }
 ```
 
-在Player下的Camera下挂载FirstPersonLook.cs
+在Player下的Camera下挂载**FirstPersonLook.cs**（鼠标控制人物面向）
 
 ```cs
 using UnityEngine;
@@ -388,7 +396,7 @@ public class FirstPersonLook : MonoBehaviourPun
 
 ### 1.4 Nickname逻辑优化 & 人物选择功能
 
-位置：Launcher.cs的OnJoinedRoom()方法中
+在Launcher.cs的OnJoinedRoom()方法中，目前代码：
 
 ```cs
 // 加入房间后用NickName进行区分
@@ -404,22 +412,43 @@ else if (PhotonNetwork.PlayerList.Length == 2)
 }
 ```
 
-目前逻辑是：
+**目前逻辑**是：
 
 - 我作为Player加入房间后，看看房间总人数（算自己）
 - 如果只有我1个，那我就是Player1，Instantiate一个RedPlayer给我控制。
 - 如果发现算上我有2个，那我就是Player2，Instantiate一个BluePlayer给我控制。
 
-需要修改的地方：
+**需要修改**的地方：
 
-- 不能直接指定NickName = "Player1"
-  而需要类似NickName = "Player" + PhotonNetwork.PlayerList.Length.ToString()的逻辑
+1. **NickName命名的规范化。**暂定就以Player`n`来命名，这个NickName在后续RPC传输数据时候需要用到。不能直接指定NickName = "Player1"，改为：
 
-- NickName命名的规范化，暂定就以Player`n`来命名，这个NickName在后续RPC传输数据时候需要用到
-- 人物的选择，即Instantiate哪个预制体
-  - 由于我们的Camera挂载在Player下，所以在Player没有被实例化的时候，Display里是黑色不显示的
-  - 希望在JoinRoom之前，给一个UI界面供用户选择对应Avatar，进而在代码中确定Instantiate的预制体
-    - 这个UI界面展示得了吗？
-    - 选择的结果如何传输给Launcher.cs的OnJoinedRoom()方法中的参数？
-    - 如果一直不选择怎么办？
+   ```cs
+   PhotonNetwork.LocalPlayer.NickName = "Player" + PhotonNetwork.PlayerList.Length.ToString();
+   ```
 
+   **后续问题**：可这样没有考虑到一下这种情况：Player1加入，Player2加入，Player2退出，Player3加入。此时按我们的逻辑Player3被命名为“Player2”了，容易造成混淆。在双人VR中无伤大雅，但是多人VR需要面临这个问题。
+
+2. **人物的选择，即Instantiate哪个预制体。**改为：
+
+   ```cs
+   private string[] PlayerPrefabName =
+       {
+           "RedPlayer",
+           "BluePlayer"
+       };
+   ```
+
+   ```cs
+   PhotonNetwork.Instantiate(PlayerPrefabName[0], new Vector3(0,0,0), Quaternion.identity, 0);
+   ```
+
+   **后续问题**：由于我们的Camera挂载在Player下，所以在Player没有被实例化的时候，Display里是黑色不显示的。希望在JoinRoom之前，给一个UI界面供用户选择对应Avatar，进而在代码中确定Instantiate的预制体：
+
+   - 这个UI界面展示得了吗？在DisplayNoCameras的情况下？
+   - 选择的结果如何传输给Launcher.cs的OnJoinedRoom()方法中的参数？如果一直不选择怎么办？
+
+
+
+### 1.5 数据传输通信
+
+> 在这一步中，用类似在线聊天室的逻辑实现：客户端A发送消息msg1；客户端B发送消息msg2；客户端A可以获取类似“A：msg1；B：msg2”的形式，即可以收到msg1和msg2，并能识别出发送方，识别出发送方，使得我们未来可以根据发送方驱动对应的Avatar
