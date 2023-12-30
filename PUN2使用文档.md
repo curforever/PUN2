@@ -452,3 +452,93 @@ else if (PhotonNetwork.PlayerList.Length == 2)
 ### 1.5 数据传输通信
 
 > 在这一步中，用类似在线聊天室的逻辑实现：客户端A发送消息msg1；客户端B发送消息msg2；客户端A可以获取类似“A：msg1；B：msg2”的形式，即可以收到msg1和msg2，并能识别出发送方，识别出发送方，使得我们未来可以根据发送方驱动对应的Avatar
+
+DataTranfer.cs用于上传个人数据、下载所有数据
+
+```cs
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using Photon.Pun;
+using Photon.Realtime;
+using System.Text.RegularExpressions;
+
+
+public class DataTransfer : MonoBehaviourPunCallbacks, IPunObservable
+{
+    public string[] Data;
+    private bool RoomCreateFlag = false;
+    private bool isJoinedRoom = false;
+    
+    void Update()
+    {
+        // 获取Playern的n
+        int idx = ExtractIndex(PhotonNetwork.LocalPlayer.NickName);
+        Data[idx] = ""; //这里修改为想发送的数据
+        Data[1] = "123";
+        Data[2] = "456";
+        photonView.RPC("UpdateData", RpcTarget.All, Data[idx]);
+
+        // 初始化
+        if (isJoinedRoom && !RoomCreateFlag)
+        {
+            RoomCreateFlag = true;
+        }
+        
+        // 不断更新
+        if (isJoinedRoom && RoomCreateFlag)
+        {
+            Debug.Log("当前房间人数: " + PhotonNetwork.PlayerList.Length);
+        }
+        
+    }
+    
+    public override void OnJoinedRoom()
+    {
+        isJoinedRoom = true;
+    }
+
+    [PunRPC]
+    private void UpdateData(int idx, string data)
+    {
+        Data[idx] = data;
+    }
+
+
+
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        if (stream.IsWriting)
+        {
+            // 发送数据
+            stream.SendNext(Data);
+        }
+        else
+        {
+            // 接收数据
+            Data = (string[])stream.ReceiveNext();
+        }
+    }
+
+    static int ExtractIndex(string input)
+    {
+        // 使用正则表达式提取数字
+        Match match = Regex.Match(input, @"\d+$");
+        if (match.Success)
+        {
+            // 将匹配到的数字转换为整数
+            if (int.TryParse(match.Value, out int index))
+            {
+                return index;
+            }
+        }
+
+        // 如果没有匹配到数字，返回默认值（例如 -1）
+        return -1;
+    }
+}
+
+```
+
+
+
