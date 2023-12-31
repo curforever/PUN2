@@ -15,7 +15,7 @@
 
 ### 1.1 客户端A连接到PUN2服务器
 
-> [Photon文档](https://doc.photonengine.com/zh-cn/fusion/current/getting-started/fusion-intro)
+> [Photon官方文档](https://doc.photonengine.com/zh-cn/pun/current/getting-started/pun-intro)
 
 1. [Photon官网](https://www.photonengine.com/pun)注册账号并CreateApp（AppID后面要用）
 
@@ -30,7 +30,7 @@
 4. Window/PUN/HighlightServerSettings的一些其他设置
 
    - AppVersion: 1
-   - Fixed Region：asia
+   - Fixed Region：asia【记得运行前关闭代理】
    - NetworkLogging：ALL
    - PUNLogging: Full
 
@@ -451,9 +451,22 @@ else if (PhotonNetwork.PlayerList.Length == 2)
 
 ### 1.5 数据传输通信
 
-> 在这一步中，用类似在线聊天室的逻辑实现：客户端A发送消息msg1；客户端B发送消息msg2；客户端A可以获取类似“A：msg1；B：msg2”的形式，即可以收到msg1和msg2，并能识别出发送方，识别出发送方，使得我们未来可以根据发送方驱动对应的Avatar
+- 思路
 
-DataTranfer.cs用于上传个人数据、下载所有数据
+```
+在这一步中，用类似在线聊天室的逻辑实现：
+客户端A发送消息msg1；客户端B发送消息msg2；
+客户端A可以获取类似“A：msg1；B：msg2”的形式，
+即可以收到msg1和msg2，并能识别出发送方，识别出发送方，使得我们未来可以根据发送方驱动对应的Avatar
+```
+
+- 参考
+
+> [PUN2官方文档Remote Procedure Calls](https://doc.photonengine.com/zh-cn/pun/current/gameplay/rpcsandraiseevent)
+
+> [ChatRoom百度网盘](https://pan.baidu.com/s/1oYp5QVsqP7qaQcySPaPHTg?pwd=adme)
+
+- DataTranfer.cs
 
 ```cs
 using System.Collections;
@@ -463,59 +476,55 @@ using Photon.Pun;
 using Photon.Realtime;
 using System.Text.RegularExpressions;
 
-
 public class DataTransfer : MonoBehaviourPunCallbacks, IPunObservable
 {
     public string[] Data;
-    private bool RoomCreateFlag = false;
-    private bool isJoinedRoom = false;
+    private bool flag = false;
+    
+    void Awake()
+    {
+        Data = new string[5]{"", "", "", "", ""};
+    }
     
     void Update()
     {
-        // 获取Playern的n
-        int idx = ExtractIndex(PhotonNetwork.LocalPlayer.NickName);
-        Data[idx] = ""; //这里修改为想发送的数据
-        Data[1] = "123";
-        Data[2] = "456";
-        photonView.RPC("UpdateData", RpcTarget.All, Data[idx]);
-
-        // 初始化
-        if (isJoinedRoom && !RoomCreateFlag)
-        {
-            RoomCreateFlag = true;
-        }
-        
-        // 不断更新
-        if (isJoinedRoom && RoomCreateFlag)
-        {
-            Debug.Log("当前房间人数: " + PhotonNetwork.PlayerList.Length);
-        }
-        
+        StartCoroutine("UpdateData");
     }
     
-    public override void OnJoinedRoom()
+    IEnumerator UpdateData()
     {
-        isJoinedRoom = true;
+        int idx = ExtractIndex(PhotonNetwork.LocalPlayer.NickName);
+        if (idx >= 0 && idx < Data.Length && !flag)
+        {
+            // 下面修改为想发送的数据
+            string msg = "Player1 Msg";
+            Data[idx] = msg; 
+            this.photonView.RPC("DoUpdateData", RpcTarget.All, idx, msg);
+            flag = true;
+        }
+        else
+        {
+            Debug.LogWarning("索引超出数组范围！");
+        }
+        
+        yield return null;
     }
 
     [PunRPC]
-    private void UpdateData(int idx, string data)
+    private void DoUpdateData(int idx, string msg, PhotonMessageInfo info)
     {
-        Data[idx] = data;
+        Data[idx] = msg;
+        // Debug.LogFormat("[PunRPC] Info: Sender: {0} \t SentServerTime: {1}", info.Sender, info.SentServerTime);
     }
-
-
-
+    
     public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
     {
         if (stream.IsWriting)
         {
-            // 发送数据
             stream.SendNext(Data);
         }
         else
         {
-            // 接收数据
             Data = (string[])stream.ReceiveNext();
         }
     }
@@ -532,7 +541,6 @@ public class DataTransfer : MonoBehaviourPunCallbacks, IPunObservable
                 return index;
             }
         }
-
         // 如果没有匹配到数字，返回默认值（例如 -1）
         return -1;
     }
@@ -540,5 +548,26 @@ public class DataTransfer : MonoBehaviourPunCallbacks, IPunObservable
 
 ```
 
+- 现存问题
+  - Player胶囊抖动问题（推测原因：rigidbody的constraints）
+  
+  - 报错udp pkg full，Player的自动退出问题（推测原因：RPC调用过于频繁）
+  
+    ![114c9ea47953c5d1d68b3529eab20c7](PUN2使用文档.assets/114c9ea47953c5d1d68b3529eab20c7.png)
+  
+    ![f49b7c31488603e69add5381be0c15e](PUN2使用文档.assets/f49b7c31488603e69add5381be0c15e.png)
+  
+  - 在实例化之前Display一片黑的优化
+    - 采用类似ChatRoom的场景转换的方式解决
+    - 白云阳：我的摄像头在每个玩家的本地，是把设备坐标传到player上。实现方法我写文档里了
 
 
+
+### 1.5* 吐槽
+
+**多人开发的难点**
+
+1. **代码一致性**：需要保证多个客户端用的都是一套代码，这增加了调试代码的难度。调试时发送的消息在代码中提前预设，如果代码一致会导致A和B发送的数据都是一样的没办法测试；如果代码不一致，不符合直觉。
+2. **调试一致性**：每次调试需要两台电脑，项目文件通过U盘或者网盘压缩、共享、解压、UnityHub添加、打开、运行。代码中出现低级错误或者需要微调时，方法一是在一端改好重新压缩、共享、解压、添加、打开，方法二是两台电脑分别修改。方法一慢，方法二如果改多了可能会导致两端不一致的情况，不符合1。
+3. **PUN2连接稳定性**：有时候运行连不上PUN2，即使你的region写了aisa、即使你已经把代理关掉了。
+4. **相机设定**：如果你的相机挂载在尚未加入房间并实例化的Player下，在成功连接PUN2并Instantisate之前，你的Display会是全黑的，因为没有相机。
